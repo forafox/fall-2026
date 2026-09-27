@@ -47,6 +47,7 @@ def main():
     best_k = KS[risks["окно Парзена"].argmin()]
     compare_with_reference(Z_train, y_train, Z_test, y_test, KS[risks["голосование"].argmin()])
     prototype_experiment(Z_train, y_train, Z_test, y_test, class_names, best_k)
+    prototype_comparison(X, y, best_k)
 
 
 def prototype_experiment(Z_train, y_train, Z_test, y_test, class_names, k):
@@ -62,6 +63,30 @@ def prototype_experiment(Z_train, y_train, Z_test, y_test, class_names, k):
                           os.path.join(IMAGES, "prototypes.png"))
     plots.plot_margins(margins, f"Отступы обучающих объектов, k = {k}", os.path.join(IMAGES, "margins.png"))
     return idx
+
+
+def prototype_comparison(X, y, k, n_splits=10):
+    """Same experiment on several random splits: one test of 53 objects is too small to compare on."""
+    print(f"\nKNN с отбором эталонов и без него, k = {k}, {n_splits} случайных разбиений:")
+    stats = {name: {"accuracy": [], "size": [], "time": []} for name in ["вся выборка", "только эталоны"]}
+    for seed in range(n_splits):
+        X_train, X_test, y_train, y_test = train_test_split(X, y, seed=seed)
+        Z_train, Z_test = standardize(X_train), standardize(X_test, X_train)
+        idx, _ = prototypes.select(Z_train, y_train, k)
+        for name, Z, labels in [("вся выборка", Z_train, y_train), ("только эталоны", Z_train[idx], y_train[idx])]:
+            start = time.perf_counter()
+            y_pred = knn.predict_parzen(knn.distances(Z, Z_test), labels, k)
+            stats[name]["time"].append(time.perf_counter() - start)
+            stats[name]["accuracy"].append(accuracy(y_test, y_pred))
+            stats[name]["size"].append(len(labels))
+
+    for name, s in stats.items():
+        print(f"  {name:15s} accuracy = {np.mean(s['accuracy']):.3f} ± {np.std(s['accuracy']):.3f}, "
+              f"объектов в памяти {np.mean(s['size']):.0f}, "
+              f"время предсказания {np.mean(s['time']) * 1000:.2f} мс")
+    plots.plot_comparison({name: s["accuracy"] for name, s in stats.items()},
+                          "Accuracy на тесте по 10 случайным разбиениям",
+                          os.path.join(IMAGES, "prototypes_quality.png"))
 
 
 def compare_with_reference(Z_train, y_train, Z_test, y_test, k):

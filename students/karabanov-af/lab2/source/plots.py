@@ -65,3 +65,20 @@ def plot_margins(margins, title, path):
     ax.legend()
     ax.grid(alpha=0.3)
     save(fig, path)
+
+
+def plot_comparison(results, title, path):
+    labels = list(results)
+    values = [results[name] for name in labels]
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.bar(labels, [np.mean(v) for v in values], yerr=[np.std(v) for v in values], capsize=5,
+           color=CURVES[:len(labels)], width=0.5, label="среднее ± std по разбиениям")
+    for x, v in enumerate(values):
+        ax.scatter([x] * len(v), v, color="black", s=18, zorder=3,
+                   label="отдельные разбиения" if x == 0 else None)
+    ax.set_ylim(min(min(v) for v in values) - 0.05, 1.02)
+    ax.set_ylabel("accuracy на тесте")
+    ax.set_title(title)
+    ax.legend(loc="lower right")
+    ax.grid(alpha=0.3, axis="y")
+    save(fig, path)
