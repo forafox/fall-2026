@@ -50,6 +50,16 @@ def main():
     compare_with_reference(Z_train, y_train, Z_test, y_test, KS[risks["голосование"].argmin()])
     prototype_experiment(Z_train, y_train, Z_test, y_test, class_names, best_k)
     prototype_comparison(X, y, best_k)
+    k_stability(X, y)
+
+
+def benchmark(call, n_repeats=20):
+    """Average time of one call in milliseconds, a single run is too noisy to compare."""
+    call()
+    start = time.perf_counter()
+    for _ in range(n_repeats):
+        call()
+    return (time.perf_counter() - start) / n_repeats * 1000
 
 
 def standardization_effect(X_train, y_train, X_test, y_test, Z_train, Z_test):
@@ -62,6 +72,23 @@ def standardization_effect(X_train, y_train, X_test, y_test, Z_train, Z_test):
         raw = accuracy(y_test, knn.predict(D_raw, y_train, k))
         scaled = accuracy(y_test, knn.predict(D_scaled, y_train, k))
         print(f"{k:>3} {raw:>16.3f} {scaled:>19.3f}")
+
+
+def k_stability(X, y, n_splits=10):
+    """The LOO curve is noisy, so its argmin on a single split is not to be trusted."""
+    print(f"\nустойчивость выбора k, {n_splits} случайных разбиений:")
+    for name, method in [("голосование", knn.predict), ("окно Парзена", knn.predict_parzen)]:
+        risks, accuracies = [], []
+        for seed in range(n_splits):
+            X_train, X_test, y_train, y_test = train_test_split(X, y, seed=seed)
+            Z_train, Z_test = standardize(X_train), standardize(X_test, X_train)
+            D_test = knn.distances(Z_train, Z_test)
+            risks.append(knn.loo_risk(Z_train, y_train, KS, method))
+            accuracies.append([accuracy(y_test, method(D_test, y_train, k)) for k in KS])
+        risks, accuracies = np.array(risks), np.array(accuracies)
+        print(f"  {name:13s} лучшее k по разбиениям: {[int(KS[r.argmin()]) for r in risks]}")
+        print(f"  {' ':13s} минимум усреднённой LOO при k = {KS[risks.mean(axis=0).argmin()]}, "
+              f"максимум accuracy на тесте при k = {KS[accuracies.mean(axis=0).argmax()]}")
 
 
 def prototype_experiment(Z_train, y_train, Z_test, y_test, class_names, k):
@@ -118,13 +145,9 @@ def compare_with_reference(Z_train, y_train, Z_test, y_test, k):
     votes, uniform = own["своя реализация, голосование"], reference["KNeighborsClassifier, uniform"]
     print(f"  расхождений с эталоном (голосование против uniform): {int((votes != uniform).sum())} из {len(y_test)}")
 
-    start = time.perf_counter()
-    knn.predict(knn.distances(Z_train, Z_test), y_train, k)
-    own_time = time.perf_counter() - start
-    start = time.perf_counter()
-    KNeighborsClassifier(n_neighbors=k).fit(Z_train, y_train).predict(Z_test)
-    reference_time = time.perf_counter() - start
-    print(f"  время на 53 объекта: своя {own_time * 1000:.1f} мс, sklearn {reference_time * 1000:.1f} мс")
+    own_time = benchmark(lambda: knn.predict(knn.distances(Z_train, Z_test), y_train, k))
+    reference_time = benchmark(lambda: KNeighborsClassifier(n_neighbors=k).fit(Z_train, y_train).predict(Z_test))
+    print(f"  время предсказания для {len(y_test)} объектов: своя {own_time:.2f} мс, sklearn {reference_time:.2f} мс")
 
 
 if __name__ == "__main__":
