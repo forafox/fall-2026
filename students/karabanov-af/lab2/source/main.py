@@ -1,8 +1,14 @@
+import os
+
 import numpy as np
 
 import knn
+import plots
 from data import load_data, standardize, train_test_split
 from metrics import accuracy
+
+IMAGES = os.path.join(os.path.dirname(__file__), "..", "images")
+KS = np.arange(1, 41)
 
 
 def main():
@@ -15,13 +21,24 @@ def main():
     Z_train = standardize(X_train)
     Z_test = standardize(X_test, X_train)
 
-    print("\naccuracy на тесте:")
-    print(f"{'k':>3} {'сырые, голосование':>20} {'станд., голосование':>21} {'станд., Парзен':>16}")
-    for k in [1, 3, 5, 10, 20]:
-        raw = accuracy(y_test, knn.predict(X_train, y_train, X_test, k))
-        vote = accuracy(y_test, knn.predict(Z_train, y_train, Z_test, k))
-        parzen = accuracy(y_test, knn.predict_parzen(Z_train, y_train, Z_test, k))
-        print(f"{k:>3} {raw:>20.3f} {vote:>21.3f} {parzen:>16.3f}")
+    risks = {
+        "голосование": knn.loo_risk(Z_train, y_train, KS, knn.predict),
+        "окно Парзена": knn.loo_risk(Z_train, y_train, KS, knn.predict_parzen),
+    }
+    plots.plot_loo(KS, risks, "Эмпирический риск LOO в зависимости от k", os.path.join(IMAGES, "loo.png"))
+
+    print("\nподбор k по LOO на обучающей выборке:")
+    print(f"{'k':>3} {'голосование':>13} {'окно Парзена':>14}")
+    for i, k in enumerate(KS):
+        if k <= 12 or k % 5 == 0:
+            print(f"{k:>3} {risks['голосование'][i]:>13.3f} {risks['окно Парзена'][i]:>14.3f}")
+
+    D_test = knn.distances(Z_train, Z_test)
+    print("\nлучшее k по LOO и качество на тесте:")
+    for name, method in [("голосование", knn.predict), ("окно Парзена", knn.predict_parzen)]:
+        k = KS[risks[name].argmin()]
+        print(f"  {name:13s} k = {k:2d}, LOO = {risks[name].min():.3f}, "
+              f"accuracy на тесте = {accuracy(y_test, method(D_test, y_train, k)):.3f}")
 
 
 if __name__ == "__main__":

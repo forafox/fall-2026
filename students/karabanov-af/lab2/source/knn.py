@@ -11,19 +11,18 @@ def gaussian(r):
     return np.exp(-0.5 * r ** 2)
 
 
-def predict(X_train, y_train, X, k=5):
-    """Majority vote of the k nearest neighbours."""
-    neighbours = np.argsort(distances(X_train, X), axis=1)[:, :k]
+def predict(D, y_train, k=5):
+    """Majority vote of the k nearest neighbours, D is the matrix of distances to the training objects."""
+    neighbours = np.argsort(D, axis=1)[:, :k]
     votes = y_train[neighbours]
     return np.array([np.bincount(row, minlength=y_train.max() + 1).argmax() for row in votes])
 
 
-def predict_parzen(X_train, y_train, X, k=5):
+def predict_parzen(D, y_train, k=5):
     """Parzen window of variable width: the window h(x) is the distance to the (k + 1)-th neighbour.
 
     Every one of the k nearest neighbours votes with the weight K(rho / h) instead of a plain 1.
     """
-    D = distances(X_train, X)
     order = np.argsort(D, axis=1)
     neighbours = order[:, :k]
     rho = np.take_along_axis(D, neighbours, axis=1)
@@ -31,3 +30,10 @@ def predict_parzen(X_train, y_train, X, k=5):
     weights = gaussian(rho / h)
     scores = np.array([(weights * (y_train[neighbours] == c)).sum(axis=1) for c in range(y_train.max() + 1)])
     return scores.argmax(axis=0)
+
+
+def loo_risk(X, y, ks, method=predict_parzen):
+    """Leave-one-out risk: every object is classified by all the others, the object itself is excluded."""
+    D = distances(X, X)
+    np.fill_diagonal(D, np.inf)
+    return np.array([np.mean(method(D, y, k) != y) for k in ks])
