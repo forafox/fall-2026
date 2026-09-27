@@ -15,12 +15,13 @@ def main():
     Z_train = standardize(X_train)
     Z_test = standardize(X_test, X_train)
 
-    print("\naccuracy на тесте, голосование k ближайших соседей:")
-    print(f"{'k':>3} {'сырые признаки':>16} {'стандартизованные':>19}")
+    print("\naccuracy на тесте:")
+    print(f"{'k':>3} {'сырые, голосование':>20} {'станд., голосование':>21} {'станд., Парзен':>16}")
     for k in [1, 3, 5, 10, 20]:
         raw = accuracy(y_test, knn.predict(X_train, y_train, X_test, k))
-        scaled = accuracy(y_test, knn.predict(Z_train, y_train, Z_test, k))
-        print(f"{k:>3} {raw:>16.3f} {scaled:>19.3f}")
+        vote = accuracy(y_test, knn.predict(Z_train, y_train, Z_test, k))
+        parzen = accuracy(y_test, knn.predict_parzen(Z_train, y_train, Z_test, k))
+        print(f"{k:>3} {raw:>20.3f} {vote:>21.3f} {parzen:>16.3f}")
 
 
 if __name__ == "__main__":
