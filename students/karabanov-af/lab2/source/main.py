@@ -16,7 +16,7 @@ KS = np.arange(1, 41)
 
 
 def main():
-    X, y, feature_names, class_names = load_data()
+    X, y, _, class_names = load_data()
     X_train, X_test, y_train, y_test = train_test_split(X, y)
     print(f"объектов: {len(y)}, признаков: {X.shape[1]}, классов: {len(np.unique(y))}")
     print(f"обучение: {X_train.shape}, по классам {np.bincount(y_train)}")
@@ -24,6 +24,8 @@ def main():
 
     Z_train = standardize(X_train)
     Z_test = standardize(X_test, X_train)
+
+    standardization_effect(X_train, y_train, X_test, y_test, Z_train, Z_test)
 
     risks = {
         "голосование": knn.loo_risk(Z_train, y_train, KS, knn.predict),
@@ -48,6 +50,18 @@ def main():
     compare_with_reference(Z_train, y_train, Z_test, y_test, KS[risks["голосование"].argmin()])
     prototype_experiment(Z_train, y_train, Z_test, y_test, class_names, best_k)
     prototype_comparison(X, y, best_k)
+
+
+def standardization_effect(X_train, y_train, X_test, y_test, Z_train, Z_test):
+    """The features are measured in different units, so without scaling the distance is defined by proline alone."""
+    print("\naccuracy на тесте, голосование k соседей:")
+    print(f"{'k':>3} {'сырые признаки':>16} {'стандартизованные':>19}")
+    D_raw = knn.distances(X_train, X_test)
+    D_scaled = knn.distances(Z_train, Z_test)
+    for k in [1, 3, 5, 10, 20]:
+        raw = accuracy(y_test, knn.predict(D_raw, y_train, k))
+        scaled = accuracy(y_test, knn.predict(D_scaled, y_train, k))
+        print(f"{k:>3} {raw:>16.3f} {scaled:>19.3f}")
 
 
 def prototype_experiment(Z_train, y_train, Z_test, y_test, class_names, k):
