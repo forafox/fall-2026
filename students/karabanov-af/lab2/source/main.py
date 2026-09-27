@@ -1,6 +1,8 @@
 import os
+import time
 
 import numpy as np
+from sklearn.neighbors import KNeighborsClassifier
 
 import knn
 import plots
@@ -39,6 +41,32 @@ def main():
         k = KS[risks[name].argmin()]
         print(f"  {name:13s} k = {k:2d}, LOO = {risks[name].min():.3f}, "
               f"accuracy на тесте = {accuracy(y_test, method(D_test, y_train, k)):.3f}")
+
+    compare_with_reference(Z_train, y_train, Z_test, y_test, KS[risks["голосование"].argmin()])
+
+
+def compare_with_reference(Z_train, y_train, Z_test, y_test, k):
+    print(f"\nсравнение с эталоном sklearn, k = {k}:")
+    D_test = knn.distances(Z_train, Z_test)
+    own = {"своя реализация, голосование": knn.predict(D_test, y_train, k),
+           "своя реализация, Парзен": knn.predict_parzen(D_test, y_train, k)}
+    reference = {}
+    for weights in ["uniform", "distance"]:
+        model = KNeighborsClassifier(n_neighbors=k, weights=weights).fit(Z_train, y_train)
+        reference[f"KNeighborsClassifier, {weights}"] = model.predict(Z_test)
+
+    for name, y_pred in {**own, **reference}.items():
+        print(f"  {name:32s} accuracy = {accuracy(y_test, y_pred):.3f}")
+    votes, uniform = own["своя реализация, голосование"], reference["KNeighborsClassifier, uniform"]
+    print(f"  расхождений с эталоном (голосование против uniform): {int((votes != uniform).sum())} из {len(y_test)}")
+
+    start = time.perf_counter()
+    knn.predict(knn.distances(Z_train, Z_test), y_train, k)
+    own_time = time.perf_counter() - start
+    start = time.perf_counter()
+    KNeighborsClassifier(n_neighbors=k).fit(Z_train, y_train).predict(Z_test)
+    reference_time = time.perf_counter() - start
+    print(f"  время на 53 объекта: своя {own_time * 1000:.1f} мс, sklearn {reference_time * 1000:.1f} мс")
 
 
 if __name__ == "__main__":
