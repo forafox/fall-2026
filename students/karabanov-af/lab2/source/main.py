@@ -9,7 +9,7 @@ import knn
 import plots
 import prototypes
 from data import load_data, standardize, train_test_split
-from metrics import accuracy
+from metrics import accuracy, class_metrics, confusion_matrix
 
 IMAGES = os.path.join(os.path.dirname(__file__), "..", "images")
 KS = np.arange(1, 41)
@@ -48,9 +48,27 @@ def main():
 
     best_k = KS[risks["окно Парзена"].argmin()]
     compare_with_reference(Z_train, y_train, Z_test, y_test, KS[risks["голосование"].argmin()])
-    prototype_experiment(Z_train, y_train, Z_test, y_test, class_names, best_k)
+    idx = prototype_experiment(Z_train, y_train, Z_test, y_test, class_names, best_k)
+    quality_report(Z_train, y_train, Z_test, y_test, idx, class_names, best_k)
     prototype_comparison(X, y, best_k)
     k_stability(X, y)
+
+
+def quality_report(Z_train, y_train, Z_test, y_test, idx, class_names, k):
+    """Accuracy alone hides which class the errors belong to, so here is the full picture per class."""
+    print(f"\nкачество по классам на тесте, окно Парзена, k = {k}:")
+    matrices = {}
+    for name, Z, labels in [("вся выборка", Z_train, y_train), ("только эталоны", Z_train[idx], y_train[idx])]:
+        y_pred = knn.predict_parzen(knn.distances(Z, Z_test), labels, k)
+        cm = confusion_matrix(y_test, y_pred, len(class_names))
+        matrices[name] = cm
+        precision, recall, f1 = class_metrics(cm)
+        print(f"  {name}: accuracy = {accuracy(y_test, y_pred):.3f}")
+        print(f"    {'класс':10s} {'precision':>10} {'recall':>8} {'f1':>7} {'объектов':>9}")
+        for c, class_name in enumerate(class_names):
+            print(f"    {class_name:10s} {precision[c]:>10.3f} {recall[c]:>8.3f} {f1[c]:>7.3f} {cm[c].sum():>9d}")
+    plots.plot_confusions(matrices, class_names, f"Матрицы ошибок на тесте, k = {k}",
+                          os.path.join(IMAGES, "confusion.png"))
 
 
 def benchmark(call, n_repeats=20):

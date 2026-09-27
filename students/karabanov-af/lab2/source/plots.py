@@ -82,3 +82,21 @@ def plot_comparison(results, title, path):
     ax.legend(loc="lower right")
     ax.grid(alpha=0.3, axis="y")
     save(fig, path)
+
+
+def plot_confusions(matrices, class_names, title, path):
+    fig, axes = plt.subplots(1, len(matrices), figsize=(5.5 * len(matrices), 4.5))
+    for ax, (name, cm) in zip(np.atleast_1d(axes), matrices.items()):
+        ax.imshow(cm, cmap="Blues")
+        for i in range(len(cm)):
+            for j in range(len(cm)):
+                ax.text(j, i, cm[i, j], ha="center", va="center", fontsize=13,
+                        color="white" if cm[i, j] > cm.max() / 2 else "black")
+        ax.set_xticks(range(len(cm)), class_names)
+        ax.set_yticks(range(len(cm)), class_names)
+        ax.set_xlabel("предсказанный класс")
+        ax.set_ylabel("истинный класс")
+        ax.set_title(name)
+        ax.grid(False)
+    fig.suptitle(title)
+    save(fig, path)
