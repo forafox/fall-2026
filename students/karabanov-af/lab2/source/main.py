@@ -2,10 +2,12 @@ import os
 import time
 
 import numpy as np
+from sklearn.decomposition import PCA
 from sklearn.neighbors import KNeighborsClassifier
 
 import knn
 import plots
+import prototypes
 from data import load_data, standardize, train_test_split
 from metrics import accuracy
 
@@ -14,7 +16,7 @@ KS = np.arange(1, 41)
 
 
 def main():
-    X, y, feature_names = load_data()
+    X, y, feature_names, class_names = load_data()
     X_train, X_test, y_train, y_test = train_test_split(X, y)
     print(f"объектов: {len(y)}, признаков: {X.shape[1]}, классов: {len(np.unique(y))}")
     print(f"обучение: {X_train.shape}, по классам {np.bincount(y_train)}")
@@ -42,7 +44,24 @@ def main():
         print(f"  {name:13s} k = {k:2d}, LOO = {risks[name].min():.3f}, "
               f"accuracy на тесте = {accuracy(y_test, method(D_test, y_train, k)):.3f}")
 
+    best_k = KS[risks["окно Парзена"].argmin()]
     compare_with_reference(Z_train, y_train, Z_test, y_test, KS[risks["голосование"].argmin()])
+    prototype_experiment(Z_train, y_train, Z_test, y_test, class_names, best_k)
+
+
+def prototype_experiment(Z_train, y_train, Z_test, y_test, class_names, k):
+    idx, margins = prototypes.select(Z_train, y_train, k)
+    noise = np.flatnonzero(margins <= 0)
+    print(f"\nотбор эталонов при k = {k}:")
+    print(f"  отсеяно как шум: {len(noise)}, эталонов: {len(idx)} из {len(y_train)} "
+          f"({100 * len(idx) / len(y_train):.0f}%), по классам {np.bincount(y_train[idx])}")
+
+    projection = PCA(n_components=2).fit_transform(Z_train)
+    plots.plot_prototypes(projection, y_train, idx, noise, class_names,
+                          f"Эталоны в проекции на две главные компоненты, k = {k}",
+                          os.path.join(IMAGES, "prototypes.png"))
+    plots.plot_margins(margins, f"Отступы обучающих объектов, k = {k}", os.path.join(IMAGES, "margins.png"))
+    return idx
 
 
 def compare_with_reference(Z_train, y_train, Z_test, y_test, k):

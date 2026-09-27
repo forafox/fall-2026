@@ -6,7 +6,7 @@ from sklearn.datasets import load_wine
 def load_data():
     """Wine: 178 objects, 13 features in different units, 3 classes."""
     wine = load_wine()
-    return wine.data, wine.target, list(wine.feature_names)
+    return wine.data, wine.target, list(wine.feature_names), list(wine.target_names)
 
 
 def train_test_split(X, y, test_size=0.3, seed=42):
