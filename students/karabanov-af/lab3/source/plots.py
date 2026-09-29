@@ -10,6 +10,7 @@ from matplotlib.lines import Line2D
 
 CLASSES = {-1: "#2a78d6", 1: "#eb6834"}
 REGIONS = ListedColormap(["#dbe8f8", "#fbe3d7"])
+REFERENCE = "#1baf7a"
 
 
 def save(fig, path, rect=(0, 0, 1, 1)):
@@ -19,8 +20,11 @@ def save(fig, path, rect=(0, 0, 1, 1)):
     plt.close(fig)
 
 
-def plot_decision(models, X, y, path):
-    """One panel per model: predicted regions, the boundary f(x) = 0, the margin f(x) = +-1 and support vectors."""
+def plot_decision(models, X, y, path, references=None):
+    """One panel per model: predicted regions, the boundary f(x) = 0, the margin f(x) = +-1 and support vectors.
+
+    `references` are sklearn models under the same keys, their boundary is drawn on top for comparison.
+    """
     xs = np.linspace(X[:, 0].min() - 0.5, X[:, 0].max() + 0.5, 300)
     ys = np.linspace(X[:, 1].min() - 0.5, X[:, 1].max() + 0.5, 300)
     xx, yy = np.meshgrid(xs, ys)
@@ -31,6 +35,9 @@ def plot_decision(models, X, y, path):
         F = model.decision_function(grid).reshape(xx.shape)
         ax.contourf(xx, yy, F, levels=[F.min(), 0, F.max()], cmap=REGIONS)
         ax.contour(xx, yy, F, levels=[-1, 0, 1], colors="black", linestyles=["--", "-", "--"], linewidths=[1, 2, 1])
+        if references:
+            F_ref = references[title].decision_function(grid).reshape(xx.shape)
+            ax.contour(xx, yy, F_ref, levels=[0], colors=REFERENCE, linestyles=":", linewidths=2.5)
         for label, color in CLASSES.items():
             ax.scatter(*X[y == label].T, color=color, s=25, alpha=0.8)
 
@@ -50,5 +57,7 @@ def plot_decision(models, X, y, path):
                label="опорный, 0 < λ < C"),
         Line2D([], [], marker="x", linestyle="", color="black", markersize=8, label="опорный, λ = C"),
     ]
+    if references:
+        legend.insert(3, Line2D([], [], color=REFERENCE, linewidth=2.5, linestyle=":", label="граница sklearn SVC"))
     fig.legend(handles=legend, loc="lower center", ncol=len(legend))
     save(fig, path, rect=(0, 0.06, 1, 1))
