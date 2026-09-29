@@ -44,7 +44,7 @@ def plot_decision(models, X, y, path, references=None):
         bound = model.lam >= model.C - model.eps
         ax.scatter(*model.X_sv[~bound].T, facecolors="none", edgecolors="black", s=110, linewidths=1.5)
         ax.scatter(*model.X_sv[bound].T, color="black", marker="x", s=50, linewidths=1.5)
-        ax.set_title(f"{title}\nопорных: {len(model.lam)}, из них λ = C: {bound.sum()}")
+        ax.set_title(f"{title}\nопорных: {len(model.lam)}, из них нарушителей: {bound.sum()}")
         ax.set_xlabel("признак 1")
         ax.set_ylabel("признак 2")
 
@@ -54,8 +54,8 @@ def plot_decision(models, X, y, path, references=None):
         Line2D([], [], color="black", linewidth=2, label="граница f(x) = 0"),
         Line2D([], [], color="black", linewidth=1, linestyle="--", label="полоса f(x) = ±1"),
         Line2D([], [], marker="o", linestyle="", markerfacecolor="none", markeredgecolor="black", markersize=10,
-               label="опорный, 0 < λ < C"),
-        Line2D([], [], marker="x", linestyle="", color="black", markersize=8, label="опорный, λ = C"),
+               label="опорный-граничный, 0 < λ < C"),
+        Line2D([], [], marker="x", linestyle="", color="black", markersize=8, label="опорный-нарушитель, λ = C"),
     ]
     if references:
         legend.insert(3, Line2D([], [], color=REFERENCE, linewidth=2.5, linestyle=":", label="граница sklearn SVC"))

@@ -28,6 +28,18 @@ def fit_timed(model, X, y):
     return time.perf_counter() - start
 
 
+def linear_classifier(model, reference, X_test, y_test):
+    """a(x) = sign(<w, x> - w0) with w = sum_i lam_i y_i x_i; sklearn keeps w in coef_ and -w0 in intercept_."""
+    w, w_ref = model.w, reference.coef_[0]
+    predicted = np.where(X_test @ w - model.w0 >= 0, 1, -1)
+    print(f"  {'':22s} a(x) = sign(<w, x> - w0): accuracy = {np.mean(predicted == y_test):.3f}")
+    print(f"  {'':22s} w = sum λ_i y_i x_i: max|w - w_SVC| = {np.abs(w - w_ref).max():.4f}, "
+          f"w0 = {model.w0:.3f} / {-reference.intercept_[0]:.3f}, "
+          f"ширина полосы 2/||w|| = {2 / np.linalg.norm(w):.3f} / {2 / np.linalg.norm(w_ref):.3f}")
+    if len(w) <= 3:
+        print(f"  {'':22s} w = {np.round(w, 3)} / {np.round(w_ref, 3)}")
+
+
 def compare(title, X, y):
     """Train our SVM and sklearn's SVC with every kernel, print the table, return both sets of models."""
     X_train, X_test, y_train, y_test = train_test_split(X, y)
@@ -46,6 +58,9 @@ def compare(title, X, y):
         gap = np.abs(model.decision_function(Z_test) - reference.decision_function(Z_test)).max()
         print(f"  {name:22s} {accuracy:6.3f} / {accuracy_ref:.3f} {len(model.lam):3d} / {reference.n_support_.sum():3d} "
               f"{agreement:11.3f} {gap:8.4f} {t:6.3f} / {t_ref:.3f}")
+
+        if params["kernel"] == "linear":
+            linear_classifier(model, reference, Z_test, y_test)
 
         ours[f"{name}, accuracy = {accuracy:.3f}"] = model
         references[f"{name}, accuracy = {accuracy:.3f}"] = reference

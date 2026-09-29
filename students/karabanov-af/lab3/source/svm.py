@@ -54,6 +54,11 @@ class SVM:
         self.w0 = np.median(self._score(X[on_margin]) - y[on_margin])
         return self
 
+    @property
+    def w(self):
+        """w = sum_i lam_i y_i x_i, the normal of the separating hyperplane: only for the linear kernel."""
+        return (self.lam * self.y_sv) @ self.X_sv
+
     def _score(self, X):
         """<w, x> = sum_i lam_i y_i K(x_i, x), w itself is never built."""
         return self.kernel(X, self.X_sv) @ (self.lam * self.y_sv)
