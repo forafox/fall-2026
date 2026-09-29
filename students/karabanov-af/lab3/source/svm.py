@@ -7,6 +7,19 @@ def linear(A, B):
     return A @ B.T
 
 
+def polynomial(degree=3, c=1.0):
+    """Polynomial kernel K(x, x') = (<x, x'> + c)^degree: all monomials up to `degree`."""
+    return lambda A, B: (A @ B.T + c) ** degree
+
+
+def rbf(gamma=1.0):
+    """Gaussian kernel K(x, x') = exp(-gamma ||x - x'||^2), ||a - b||^2 = ||a||^2 + ||b||^2 - 2<a, b>."""
+    def kernel(A, B):
+        sq = (A ** 2).sum(axis=1)[:, None] + (B ** 2).sum(axis=1)[None, :] - 2 * A @ B.T
+        return np.exp(-gamma * sq)
+    return kernel
+
+
 class SVM:
     """Soft margin SVM trained through the dual problem in lambda."""
 
