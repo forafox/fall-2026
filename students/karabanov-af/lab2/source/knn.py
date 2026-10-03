@@ -28,6 +28,7 @@ def class_scores(D, y_train, k=5):
     neighbours = order[:, :k]
     rho = np.take_along_axis(D, neighbours, axis=1)
     h = np.take_along_axis(D, order[:, k:k + 1], axis=1)
+    h = np.where(h > 0, h, np.finfo(float).eps)
     weights = gaussian(rho / h)
     return np.array([(weights * (y_train[neighbours] == c)).sum(axis=1) for c in range(y_train.max() + 1)])
 
