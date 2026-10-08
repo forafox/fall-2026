@@ -43,3 +43,29 @@ def plot_scree(variance, ratio, stick, title, path):
 
     fig.suptitle(title)
     save(fig, path)
+
+
+def plot_regression(components, pcr_scores, ols_score, alphas, ridge_scores, title, path):
+    fig, (left, right) = plt.subplots(1, 2, figsize=(12, 4.5))
+
+    left.plot(components, pcr_scores, marker="o", color=CURVES[0], label="регрессия на k компонентах")
+    left.axhline(ols_score, color=CURVES[1], linestyle="--", linewidth=1.5,
+                 label=f"МНК по всем признакам, R² = {ols_score:.3f}")
+    left.set_xlabel("число оставленных компонент k")
+    left.set_ylabel("R² на тесте")
+    left.set_title("Качество против числа компонент")
+    left.legend(loc="lower right")
+    left.grid(alpha=0.3)
+
+    right.plot(alphas, ridge_scores, marker="o", markersize=3, color=CURVES[2],
+               label="гребневая регрессия")
+    right.axhline(ols_score, color=CURVES[1], linestyle="--", linewidth=1.5, label="МНК")
+    right.set_xscale("log")
+    right.set_xlabel("коэффициент регуляризации alpha")
+    right.set_ylabel("R² на тесте")
+    right.set_title("Качество против регуляризации")
+    right.legend(loc="lower left")
+    right.grid(alpha=0.3)
+
+    fig.suptitle(title)
+    save(fig, path)

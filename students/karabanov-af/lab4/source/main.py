@@ -5,6 +5,7 @@ import os
 
 import pca
 import plots
+import regression
 from data import load_data, standardize, train_test_split
 
 
@@ -26,7 +27,9 @@ def main():
 
     decomposition(Z)
     dimension(Z)
-    compare_with_reference(Z, standardize(X_test, X_train))
+    Z_test = standardize(X_test, X_train)
+    compare_with_reference(Z, Z_test)
+    regression_experiment(Z, y_train, Z_test, y_test)
 
 
 IMAGES = os.path.join(os.path.dirname(__file__), "..", "images")
@@ -108,6 +111,39 @@ def compare_with_reference(Z, Z_test):
         model = PCA(n_components=k, svd_solver="full").fit(Z)
         difference = np.abs(restored - model.inverse_transform(model.transform(Z_test))).max()
         print(f"  k = {k}: max|восстановление - inverse_transform()| = {difference:.2e}")
+
+
+def regression_experiment(Z, y_train, Z_test, y_test):
+    """Three methods differing only by the SVD filter: least squares, ridge, regression on components."""
+    print("\nрегрессия на главных компонентах:")
+    print(f"{'k':>3} {'R2 train':>10} {'R2 test':>10} {'RMSE test':>11} {'||w||':>9}")
+    components = np.arange(1, Z.shape[1] + 1)
+    pcr_scores = []
+    for k in components:
+        weights, intercept = regression.fit(Z, y_train, n_components=k)
+        pcr_scores.append(regression.r2(y_test, regression.predict(Z_test, weights, intercept)))
+        print(f"{k:>3} {regression.r2(y_train, regression.predict(Z, weights, intercept)):>10.4f} "
+              f"{pcr_scores[-1]:>10.4f} "
+              f"{regression.rmse(y_test, regression.predict(Z_test, weights, intercept)):>11.2f} "
+              f"{np.linalg.norm(weights):>9.2f}")
+
+    weights, intercept = regression.fit(Z, y_train)
+    ols_score = regression.r2(y_test, regression.predict(Z_test, weights, intercept))
+
+    alphas = np.logspace(-2, 4, 25)
+    ridge_scores = []
+    for alpha in alphas:
+        ridge_weights, ridge_intercept = regression.fit(Z, y_train, alpha=alpha)
+        ridge_scores.append(regression.r2(y_test, regression.predict(Z_test, ridge_weights, ridge_intercept)))
+    best = int(np.argmax(ridge_scores))
+
+    print(f"\n  МНК по всем признакам   : R2 = {ols_score:.4f}, ||w|| = {np.linalg.norm(weights):.2f}")
+    print(f"  лучшая PCA-регрессия    : R2 = {max(pcr_scores):.4f} при k = {components[int(np.argmax(pcr_scores))]}")
+    print(f"  лучшая гребневая        : R2 = {ridge_scores[best]:.4f} при alpha = {alphas[best]:.3g}")
+
+    plots.plot_regression(components, pcr_scores, ols_score, alphas, ridge_scores,
+                          "Снижение размерности и регуляризация в задаче регрессии",
+                          os.path.join(IMAGES, "regression.png"))
 
 
 if __name__ == "__main__":
