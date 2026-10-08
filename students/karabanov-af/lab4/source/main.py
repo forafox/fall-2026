@@ -1,4 +1,5 @@
 import numpy as np
+from sklearn.decomposition import PCA
 
 import os
 
@@ -25,6 +26,7 @@ def main():
 
     decomposition(Z)
     dimension(Z)
+    compare_with_reference(Z, standardize(X_test, X_train))
 
 
 IMAGES = os.path.join(os.path.dirname(__file__), "..", "images")
@@ -79,6 +81,33 @@ def dimension(Z):
 
     plots.plot_scree(variance, ratio, stick, "Эффективная размерность выборки diabetes",
                      os.path.join(IMAGES, "scree.png"))
+
+
+def compare_with_reference(Z, Z_test):
+    """Same decomposition by sklearn: everything must match up to the sign of the axes."""
+    mean, components, singular = pca.fit(Z)
+    reference = PCA(n_components=None, svd_solver="full").fit(Z)
+
+    signs = np.sign(np.sum(components * reference.components_, axis=1))
+    print("\nсравнение с sklearn.decomposition.PCA:")
+    print(f"  знаки осей совпали у {int((signs > 0).sum())} из {len(signs)} компонент")
+    print(f"  max|среднее - mean_|            = {np.abs(mean - reference.mean_).max():.2e}")
+    print(f"  max|сингулярные - singular_values_| = {np.abs(singular - reference.singular_values_).max():.2e}")
+    print(f"  max|дисперсии - explained_variance_| = "
+          f"{np.abs(pca.explained_variance(singular, len(Z)) - reference.explained_variance_).max():.2e}")
+    print(f"  max|доли - explained_variance_ratio_| = "
+          f"{np.abs(pca.explained_variance_ratio(singular) - reference.explained_variance_ratio_).max():.2e}")
+    print(f"  max|оси - components_| с учётом знака = "
+          f"{np.abs(signs[:, None] * components - reference.components_).max():.2e}")
+
+    own = pca.transform(Z_test, mean, components)
+    print(f"  max|проекции теста - transform()| с учётом знака = "
+          f"{np.abs(own * signs - reference.transform(Z_test)).max():.2e}")
+    for k in [2, 5, 8]:
+        restored = pca.inverse_transform(pca.transform(Z_test, mean, components, k), mean, components)
+        model = PCA(n_components=k, svd_solver="full").fit(Z)
+        difference = np.abs(restored - model.inverse_transform(model.transform(Z_test))).max()
+        print(f"  k = {k}: max|восстановление - inverse_transform()| = {difference:.2e}")
 
 
 if __name__ == "__main__":
