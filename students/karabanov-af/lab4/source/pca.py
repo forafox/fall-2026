@@ -29,3 +29,13 @@ def transform(X, mean, components, k=None):
 def inverse_transform(P, mean, components):
     """Back to the feature space from the k coordinates kept in P."""
     return P @ components[:P.shape[1]] + mean
+
+
+def effective_dimension(ratio, threshold=0.95):
+    """How many axes are needed to keep the given share of the total variance."""
+    return int(np.searchsorted(np.cumsum(ratio), threshold) + 1)
+
+
+def broken_stick(d):
+    """Expected share of the j-th axis if the variance were split between d axes at random."""
+    return np.array([np.sum(1 / np.arange(j, d + 1)) / d for j in range(1, d + 1)])

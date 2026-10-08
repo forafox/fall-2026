@@ -1,6 +1,9 @@
 import numpy as np
 
+import os
+
 import pca
+import plots
 from data import load_data, standardize, train_test_split
 
 
@@ -21,6 +24,10 @@ def main():
     print(f"\nчисло обусловленности матрицы признаков: {np.linalg.cond(Z):.1f}")
 
     decomposition(Z)
+    dimension(Z)
+
+
+IMAGES = os.path.join(os.path.dirname(__file__), "..", "images")
 
 
 def decomposition(Z):
@@ -48,6 +55,30 @@ def decomposition(Z):
         approximation = pca.inverse_transform(pca.transform(Z, mean, components, k), mean, components)
         error = ((approximation - Z) ** 2).sum() / (len(Z) - 1)
         print(f"  k = {k}: ошибка восстановления {error:.4f}, сумма отброшенных дисперсий {variance[k:].sum():.4f}")
+
+
+def dimension(Z):
+    """Effective dimension: how many axes are worth keeping, by four different criteria."""
+    _, _, singular = pca.fit(Z)
+    variance = pca.explained_variance(singular, len(Z))
+    ratio = pca.explained_variance_ratio(singular)
+    stick = pca.broken_stick(len(ratio))
+
+    print("\nэффективная размерность:")
+    print(f"{'номер':>6} {'дисперсия':>11} {'доля':>8} {'накопленно':>12} {'трость':>8}")
+    for j, (v, r, c, b) in enumerate(zip(variance, ratio, np.cumsum(ratio), stick), start=1):
+        print(f"{j:>6} {v:>11.3f} {r:>8.3f} {c:>12.3f} {b:>8.3f}")
+
+    print("\nкритерии:")
+    for level in [0.85, 0.95, 0.99]:
+        print(f"  доля дисперсии {level:.0%}: {pca.effective_dimension(ratio, level)} компонент")
+    print(f"  критерий Кайзера (дисперсия > 1): {int((variance > 1).sum())} компонент")
+    print(f"  сломанная трость (доля > случайной): {int((ratio > stick).sum())} компонент")
+    print(f"  обусловленность: s_max / s_min = {singular[0] / singular[-1]:.1f}, "
+          f"при 8 компонентах {singular[0] / singular[7]:.1f}")
+
+    plots.plot_scree(variance, ratio, stick, "Эффективная размерность выборки diabetes",
+                     os.path.join(IMAGES, "scree.png"))
 
 
 if __name__ == "__main__":
