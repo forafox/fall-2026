@@ -31,11 +31,20 @@ def inverse_transform(P, mean, components):
     return P @ components[:P.shape[1]] + mean
 
 
-def effective_dimension(ratio, threshold=0.95):
-    """How many axes are needed to keep the given share of the total variance."""
-    return int(np.searchsorted(np.cumsum(ratio), threshold) + 1)
+def residual_share(ratio):
+    """Share of the squared norm that is lost when only the first m axes are kept.
+
+    E_m = (lambda_{m+1} + ... + lambda_n) / (lambda_1 + ... + lambda_n).
+    """
+    return 1 - np.cumsum(ratio)
 
 
-def broken_stick(d):
-    """Expected share of the j-th axis if the variance were split between d axes at random."""
-    return np.array([np.sum(1 / np.arange(j, d + 1)) / d for j in range(1, d + 1)])
+def effective_dimension(ratio, eps=0.05):
+    """Effective dimension of the sample: the smallest m with E_m <= eps."""
+    return int(np.searchsorted(-residual_share(ratio), -eps) + 1)
+
+
+def steep_slope(residual):
+    """Ratios E_(m-1) / E_m for m = 1 .. d - 1, where the criterion looks for a jump."""
+    previous = np.concatenate(([1.0], residual[:-1]))
+    return previous[:-1] / residual[:-1]

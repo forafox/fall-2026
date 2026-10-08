@@ -29,7 +29,7 @@ def main():
     dimension(Z)
     Z_test = standardize(X_test, X_train)
     compare_with_reference(Z, Z_test)
-    regression_experiment(Z, y_train, Z_test, y_test)
+    regression_experiment(X_train, Z, y_train, Z_test, y_test)
 
 
 IMAGES = os.path.join(os.path.dirname(__file__), "..", "images")
@@ -63,26 +63,30 @@ def decomposition(Z):
 
 
 def dimension(Z):
-    """Effective dimension: how many axes are worth keeping, by four different criteria."""
+    """Effective dimension: how many axes are worth keeping, by the criteria from the lecture."""
     _, _, singular = pca.fit(Z)
     variance = pca.explained_variance(singular, len(Z))
     ratio = pca.explained_variance_ratio(singular)
-    stick = pca.broken_stick(len(ratio))
+    residual = pca.residual_share(ratio)
+    slope = pca.steep_slope(residual)
 
     print("\nэффективная размерность:")
-    print(f"{'номер':>6} {'дисперсия':>11} {'доля':>8} {'накопленно':>12} {'трость':>8}")
-    for j, (v, r, c, b) in enumerate(zip(variance, ratio, np.cumsum(ratio), stick), start=1):
-        print(f"{j:>6} {v:>11.3f} {r:>8.3f} {c:>12.3f} {b:>8.3f}")
+    print(f"{'m':>3} {'дисперсия':>11} {'доля':>8} {'накопленно':>12} {'E(m)':>9} {'E(m-1)/E(m)':>13}")
+    for m, (v, r, c, e) in enumerate(zip(variance, ratio, np.cumsum(ratio), residual), start=1):
+        jump = f"{slope[m - 1]:>13.2f}" if m <= len(slope) else f"{'-':>13}"
+        print(f"{m:>3} {v:>11.3f} {r:>8.3f} {c:>12.3f} {e:>9.4f}{jump}")
 
     print("\nкритерии:")
-    for level in [0.85, 0.95, 0.99]:
-        print(f"  доля дисперсии {level:.0%}: {pca.effective_dimension(ratio, level)} компонент")
+    for eps in [0.15, 0.05, 0.01]:
+        print(f"  порог E(m) <= {eps:.0%}: {pca.effective_dimension(ratio, eps)} компонент")
+    print(f"  критерий крутого склона: склон ломается на m = {int(np.argmax(slope > 2)) + 1} "
+          f"(потеря впервые падает больше чем вдвое), резче всего на m = {int(np.argmax(slope)) + 1} "
+          f"(в {slope.max():.1f} раза)")
     print(f"  критерий Кайзера (дисперсия > 1): {int((variance > 1).sum())} компонент")
-    print(f"  сломанная трость (доля > случайной): {int((ratio > stick).sum())} компонент")
     print(f"  обусловленность: s_max / s_min = {singular[0] / singular[-1]:.1f}, "
           f"при 8 компонентах {singular[0] / singular[7]:.1f}")
 
-    plots.plot_scree(variance, ratio, stick, "Эффективная размерность выборки diabetes",
+    plots.plot_scree(variance, residual, slope, "Эффективная размерность выборки diabetes",
                      os.path.join(IMAGES, "scree.png"))
 
 
@@ -113,35 +117,67 @@ def compare_with_reference(Z, Z_test):
         print(f"  k = {k}: max|восстановление - inverse_transform()| = {difference:.2e}")
 
 
-def regression_experiment(Z, y_train, Z_test, y_test):
-    """Three methods differing only by the SVD filter: least squares, ridge, regression on components."""
+def least_squares_checks(Z, y_train):
+    """The lecture derives the same solution three ways: normal equations, pseudoinverse, SVD."""
+    weights, intercept = regression.fit(Z, y_train)
+    centered = y_train - intercept
+    U, singular, _ = np.linalg.svd(Z, full_matrices=False)
+
+    print("\nпроверки МНК-решения:")
+    print(f"  max|w - pinv(Z) y|      = {np.abs(weights - np.linalg.pinv(Z) @ centered).max():.2e}")
+    print(f"  max|w - (Zt Z)^-1 Zt y| = "
+          f"{np.abs(weights - np.linalg.solve(Z.T @ Z, Z.T @ centered)).max():.2e}")
+    print(f"  ||w||^2 = {np.linalg.norm(weights) ** 2:.4f}, "
+          f"сумма (v y)^2 / lambda = {np.sum((U.T @ centered) ** 2 / singular ** 2):.4f}")
+
+
+def regression_experiment(X_train, Z, y_train, Z_test, y_test):
+    """Three methods differing only by the SVD filter: least squares, ridge, regression on components.
+
+    The number of components and the regularization coefficient are chosen by cross validation
+    on the training data: the test set is touched once, to report the final quality.
+    """
+    least_squares_checks(Z, y_train)
+    _, singular, _ = np.linalg.svd(Z, full_matrices=False)
+
     print("\nрегрессия на главных компонентах:")
-    print(f"{'k':>3} {'R2 train':>10} {'R2 test':>10} {'RMSE test':>11} {'||w||':>9}")
+    print(f"{'k':>3} {'R2 CV':>9} {'R2 train':>10} {'R2 test':>10} {'RMSE test':>11} {'||w||':>9}")
     components = np.arange(1, Z.shape[1] + 1)
-    pcr_scores = []
+    pcr_cv, pcr_test = [], []
     for k in components:
         weights, intercept = regression.fit(Z, y_train, n_components=k)
-        pcr_scores.append(regression.r2(y_test, regression.predict(Z_test, weights, intercept)))
-        print(f"{k:>3} {regression.r2(y_train, regression.predict(Z, weights, intercept)):>10.4f} "
-              f"{pcr_scores[-1]:>10.4f} "
-              f"{regression.rmse(y_test, regression.predict(Z_test, weights, intercept)):>11.2f} "
+        prediction = regression.predict(Z_test, weights, intercept)
+        pcr_cv.append(regression.cross_val_r2(X_train, y_train, n_components=k))
+        pcr_test.append(regression.r2(y_test, prediction))
+        print(f"{k:>3} {pcr_cv[-1]:>9.4f} {regression.r2(y_train, regression.predict(Z, weights, intercept)):>10.4f} "
+              f"{pcr_test[-1]:>10.4f} {regression.rmse(y_test, prediction):>11.2f} "
               f"{np.linalg.norm(weights):>9.2f}")
 
-    weights, intercept = regression.fit(Z, y_train)
-    ols_score = regression.r2(y_test, regression.predict(Z_test, weights, intercept))
-
     alphas = np.logspace(-2, 4, 25)
-    ridge_scores = []
+    ridge_cv = [regression.cross_val_r2(X_train, y_train, alpha=alpha) for alpha in alphas]
+    ridge_test = []
     for alpha in alphas:
-        ridge_weights, ridge_intercept = regression.fit(Z, y_train, alpha=alpha)
-        ridge_scores.append(regression.r2(y_test, regression.predict(Z_test, ridge_weights, ridge_intercept)))
-    best = int(np.argmax(ridge_scores))
+        weights, intercept = regression.fit(Z, y_train, alpha=alpha)
+        ridge_test.append(regression.r2(y_test, regression.predict(Z_test, weights, intercept)))
 
-    print(f"\n  МНК по всем признакам   : R2 = {ols_score:.4f}, ||w|| = {np.linalg.norm(weights):.2f}")
-    print(f"  лучшая PCA-регрессия    : R2 = {max(pcr_scores):.4f} при k = {components[int(np.argmax(pcr_scores))]}")
-    print(f"  лучшая гребневая        : R2 = {ridge_scores[best]:.4f} при alpha = {alphas[best]:.3g}")
+    best_k = components[int(np.argmax(pcr_cv))]
+    best_alpha = alphas[int(np.argmax(ridge_cv))]
+    print("\nвыбор гиперпараметров по кросс-валидации на обучении:")
+    print(f"  число компонент k = {best_k} (R2 на кросс-валидации {max(pcr_cv):.4f})")
+    print(f"  коэффициент alpha = {best_alpha:.3g} (R2 на кросс-валидации {max(ridge_cv):.4f})")
+    print(f"  гребневая при этом alpha использует {regression.effective_dimension(singular, best_alpha):.2f} "
+          f"направлений из {Z.shape[1]} (след проекционной матрицы)")
 
-    plots.plot_regression(components, pcr_scores, ols_score, alphas, ridge_scores,
+    print("\nитог на тесте:")
+    for name, kwargs in [("МНК по всем признакам", {}),
+                         (f"PCA-регрессия, k = {best_k}", {"n_components": int(best_k)}),
+                         (f"гребневая, alpha = {best_alpha:.3g}", {"alpha": best_alpha})]:
+        weights, intercept = regression.fit(Z, y_train, **kwargs)
+        print(f"  {name:28s}: R2 = {regression.r2(y_test, regression.predict(Z_test, weights, intercept)):.4f}, "
+              f"||w|| = {np.linalg.norm(weights):.2f}")
+
+    plots.plot_regression(components, pcr_cv, pcr_test, alphas, ridge_cv, ridge_test,
+                          regression.r2(y_test, regression.predict(Z_test, *regression.fit(Z, y_train))),
                           "Снижение размерности и регуляризация в задаче регрессии",
                           os.path.join(IMAGES, "regression.png"))
 
