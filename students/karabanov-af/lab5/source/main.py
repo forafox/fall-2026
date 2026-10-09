@@ -1,5 +1,7 @@
 import numpy as np
 
+from sklearn.linear_model import LogisticRegression
+
 import logistic
 from data import add_bias, load_data, standardize, train_test_split
 
@@ -26,6 +28,8 @@ def main():
     separability(F, labels, F_test, labels_test)
     equivalence(F, labels, y_train)
     reweighting(F, labels)
+    compare_with_reference(standardize(X_train), y_train, F, labels,
+                           standardize(X_test, X_train), F_test)
 
 
 def newton(F, y, F_test, y_test, tau=1.0):
@@ -95,6 +99,29 @@ def reweighting(F, y, tau=1.0):
               f"{importance[i]:>12.3e} {1 / sigma[i]:>10.3f}")
     print(f"  суммарный вес {importance.sum():.2f} на {len(y)} объектов: "
           f"{int((importance > 0.01 * importance.max()).sum())} объектов несут почти всю информацию")
+
+
+def compare_with_reference(X, y01, F, y, X_test, F_test, tau=1.0):
+    """sklearn minimizes C * sum log(1 + exp(-M)) + ||w||^2 / 2, so its C is our 1 / tau."""
+    weights = logistic.newton_raphson(F, y, tau=tau)[-1]
+
+    print(f"\nсравнение с sklearn.linear_model.LogisticRegression, C = 1 / tau = {1 / tau:g}:")
+    print(f"{'solver':>18} {'итераций':>9} {'max|свободный член|':>21} {'max|веса|':>11} {'max|вероятности|':>18}")
+    for solver in ["newton-cholesky", "lbfgs", "liblinear"]:
+        reference = LogisticRegression(C=1 / tau, solver=solver, tol=1e-12, max_iter=10000).fit(X, y01)
+        probabilities = logistic.probability(F_test, weights)
+        print(f"{solver:>18} {int(np.ravel(reference.n_iter_)[0]):>9} "
+              f"{abs(weights[0] - reference.intercept_[0]):>21.2e} "
+              f"{np.abs(weights[1:] - reference.coef_[0]).max():>11.2e} "
+              f"{np.abs(probabilities - reference.predict_proba(X_test)[:, 1]).max():>18.2e}")
+
+    print("  liblinear штрафует ещё и свободный член, поэтому решает другую задачу и отвечает иначе")
+
+    reference = LogisticRegression(C=1 / tau, solver="newton-cholesky", tol=1e-12).fit(X, y01)
+    print(f"  значение Q в нашей точке {logistic.log_loss(F, y, weights, tau):.10f}, "
+          f"в точке sklearn {logistic.log_loss(F, y, np.r_[reference.intercept_, reference.coef_[0]], tau):.10f}")
+    print(f"  предсказания на тесте совпали у {int((logistic.predict(F_test, weights) == logistic.signed(reference.predict(X_test))).sum())} "
+          f"из {len(F_test)} объектов")
 
 
 if __name__ == "__main__":
