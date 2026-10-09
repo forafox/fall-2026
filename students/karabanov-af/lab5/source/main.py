@@ -38,6 +38,7 @@ def main():
     convergence(F, labels, y_train)
     regularization(X_train, labels, F_test, labels_test)
     probabilities(F, labels, F_test, labels_test)
+    odds(F, labels, feature_names)
 
 
 def newton(F, y, F_test, y_test, tau=1.0):
@@ -191,6 +192,19 @@ def probabilities(F, y, F_test, y_test, tau=1.0):
     plots.plot_calibration(predicted, observed, sizes, predicted_probabilities, y_test,
                            "Вероятностная интерпретация логистической регрессии",
                            os.path.join(IMAGES, "calibration.png"))
+
+
+def odds(F, y, feature_names, tau=1.0):
+    """The linear part is the log odds, so exp(w_j) is how the odds change per one std of a feature."""
+    weights = logistic.newton_raphson(F, y, tau=tau)[-1]
+    order = np.argsort(-np.abs(weights[1:]))
+
+    print("\nсамые влиятельные признаки (шансы на доброкачественную опухоль):")
+    print(f"{'признак':>24} {'вес':>9} {'exp(вес)':>10}")
+    for j in np.concatenate([order[:5], order[-2:]]):
+        print(f"{feature_names[j]:>24} {weights[j + 1]:>9.3f} {np.exp(weights[j + 1]):>10.3f}")
+    print(f"  свободный член {weights[0]:.3f}: шансы {np.exp(weights[0]):.3f} к одному "
+          f"для объекта со средними признаками")
 
 
 if __name__ == "__main__":
