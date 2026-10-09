@@ -3,7 +3,12 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 
 import logistic
+import plots
+import os
+
 from data import add_bias, load_data, standardize, train_test_split
+
+IMAGES = os.path.join(os.path.dirname(__file__), "..", "images")
 
 
 def main():
@@ -30,6 +35,9 @@ def main():
     reweighting(F, labels)
     compare_with_reference(standardize(X_train), y_train, F, labels,
                            standardize(X_test, X_train), F_test)
+    convergence(F, labels, y_train)
+    regularization(X_train, labels, F_test, labels_test)
+    probabilities(F, labels, F_test, labels_test)
 
 
 def newton(F, y, F_test, y_test, tau=1.0):
@@ -122,6 +130,67 @@ def compare_with_reference(X, y01, F, y, X_test, F_test, tau=1.0):
           f"в точке sklearn {logistic.log_loss(F, y, np.r_[reference.intercept_, reference.coef_[0]], tau):.10f}")
     print(f"  предсказания на тесте совпали у {int((logistic.predict(F_test, weights) == logistic.signed(reference.predict(X_test))).sum())} "
           f"из {len(F_test)} объектов")
+
+
+def convergence(F, y, y01, tau=1.0):
+    """How fast each method gets to the optimum, and how far the three Newton steps drift apart."""
+    paths = {"метод Ньютона-Рафсона": logistic.newton_raphson(F, y, tau=tau),
+             "IRLS": logistic.irls(F, y, tau=tau),
+             "IRLS в записи GLM": logistic.irls_glm(F, y01, tau=tau),
+             "градиентный спуск": logistic.gradient_descent(F, y, tau=tau)}
+    losses = {name: np.array([logistic.log_loss(F, y, w, tau) for w in path]) for name, path in paths.items()}
+    newton_path = paths["метод Ньютона-Рафсона"]
+    divergences = {name: np.array([np.abs(w - v).max() for w, v in zip(newton_path, path)])
+                   for name, path in paths.items() if name != "метод Ньютона-Рафсона"}
+
+    print("\nсколько итераций нужно, чтобы подойти к оптимуму ближе чем на 1e-6:")
+    best = min(values.min() for values in losses.values())
+    for name, values in losses.items():
+        close = np.flatnonzero(values - best < 1e-6)
+        reached = f"{close[0]}" if len(close) else f"не дошёл за {len(values) - 1}"
+        print(f"  {name:22s}: {reached:>20}, в конце Q - Q* = {values[-1] - best:.2e}")
+
+    plots.plot_convergence(losses, divergences, "Сходимость методов обучения логистической регрессии",
+                           os.path.join(IMAGES, "convergence.png"))
+
+
+def regularization(X_train, y, F_test, y_test):
+    """Choose tau by cross validation on the training data, then look at the test once."""
+    taus = np.logspace(-3, 3, 19)
+    cross_validated = np.array([logistic.cross_val(X_train, y, tau) for tau in taus])
+    test_losses, norms, conditions = [], [], []
+    for tau in taus:
+        weights = logistic.newton_raphson(add_bias(standardize(X_train)), y, tau=tau)[-1]
+        test_losses.append(logistic.log_loss(F_test, y_test, weights) / len(y_test))
+        norms.append(np.linalg.norm(weights))
+        conditions.append(np.linalg.cond(logistic.hessian(add_bias(standardize(X_train)), y, weights, tau)))
+
+    best = int(np.argmin(cross_validated[:, 1]))
+    print(f"\nподбор tau по кросс-валидации: tau = {taus[best]:.3g}, "
+          f"log-loss {cross_validated[best, 1]:.4f}, точность {cross_validated[best, 0]:.4f}")
+    print(f"  на тесте при этом tau: log-loss {test_losses[best]:.4f}, ||w|| = {norms[best]:.2f}")
+
+    plots.plot_regularization(taus, cross_validated[:, 1], test_losses, norms, conditions,
+                              "Регуляризация логистической регрессии",
+                              os.path.join(IMAGES, "regularization.png"))
+
+
+def probabilities(F, y, F_test, y_test, tau=1.0):
+    """The model predicts posterior probabilities, so they should match the observed frequencies."""
+    weights = logistic.newton_raphson(F, y, tau=tau)[-1]
+    predicted_probabilities = logistic.probability(F_test, weights)
+    predicted, observed, sizes = logistic.calibration(predicted_probabilities, y_test)
+
+    print("\nкалибровка вероятностей на тесте:")
+    print(f"{'группа':>8} {'размер':>8} {'предсказано':>13} {'наблюдается':>13}")
+    for number, (p, o, size) in enumerate(zip(predicted, observed, sizes), start=1):
+        print(f"{number:>8} {size:>8} {p:>13.4f} {o:>13.4f}")
+    print(f"  средняя предсказанная вероятность {predicted_probabilities.mean():.4f}, "
+          f"доля класса 1 на тесте {(y_test > 0).mean():.4f}")
+
+    plots.plot_calibration(predicted, observed, sizes, predicted_probabilities, y_test,
+                           "Вероятностная интерпретация логистической регрессии",
+                           os.path.join(IMAGES, "calibration.png"))
 
 
 if __name__ == "__main__":

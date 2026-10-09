@@ -1,5 +1,7 @@
 import numpy as np
 
+from data import add_bias, standardize
+
 
 def sigmoid(z):
     """Logistic function 1 / (1 + exp(-z)), written through tanh so that exp() never overflows."""
@@ -102,6 +104,43 @@ def irls_glm(F, y, tau=1.0, step=1.0, n_iterations=50, tolerance=1e-10):
 def least_squares(F, y):
     """Plain least squares, the zero approximation the lecture starts IRLS from."""
     return np.linalg.lstsq(F, y, rcond=None)[0]
+
+
+def gradient_descent(F, y, tau=1.0, step=None, n_iterations=300):
+    """Plain gradient descent, for contrast: without the Hessian the convergence is only linear.
+
+    The default step is 1 / L, where L is the largest eigenvalue of the Hessian at the starting point.
+    """
+    trajectory = [np.zeros(F.shape[1])]
+    if step is None:
+        step = 1 / np.linalg.eigvalsh(hessian(F, y, trajectory[-1], tau)).max()
+    for _ in range(n_iterations):
+        trajectory.append(trajectory[-1] - step * gradient(F, y, trajectory[-1], tau))
+    return np.array(trajectory)
+
+
+def cross_val(X, y, tau, folds=5, seed=0):
+    """Accuracy and log-loss averaged over `folds` parts, with the standardization refitted inside."""
+    index = np.random.default_rng(seed).permutation(len(y))
+    scores = []
+    for fold in np.array_split(index, folds):
+        train = np.setdiff1d(index, fold)
+        w = newton_raphson(add_bias(standardize(X[train])), y[train], tau=tau)[-1]
+        held_out = add_bias(standardize(X[fold], X[train]))
+        scores.append((accuracy(y[fold], predict(held_out, w)),
+                       log_loss(held_out, y[fold], w) / len(fold)))
+    return np.mean(scores, axis=0)
+
+
+def calibration(probabilities, y, n_bins=8):
+    """Reliability of the probabilities: predicted against observed frequency, in bins of equal size."""
+    order = np.argsort(probabilities)
+    predicted, observed, sizes = [], [], []
+    for part in np.array_split(order, n_bins):
+        predicted.append(probabilities[part].mean())
+        observed.append((y[part] > 0).mean())
+        sizes.append(len(part))
+    return np.array(predicted), np.array(observed), np.array(sizes)
 
 
 def probability(F, w):
