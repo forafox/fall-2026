@@ -52,6 +52,58 @@ def newton_raphson(F, y, tau=1.0, step=1.0, n_iterations=50, tolerance=1e-10):
     return np.array(trajectory)
 
 
+def ridge(A, b, tau):
+    """Solve the normal system of a weighted least squares problem with an L2 penalty."""
+    return np.linalg.solve(A + tau * np.diag(without_bias(np.ones(len(A)))), b)
+
+
+def irls(F, y, tau=1.0, step=1.0, n_iterations=50, tolerance=1e-10, start=None):
+    """The same Newton step written as a weighted least squares problem, as on slide 9.
+
+    gamma_i = sqrt((1 - sigma_i) sigma_i) are the object weights, y~_i = y_i sqrt((1 - sigma_i) / sigma_i)
+    the modified answers, and w += h (F~.T F~)^-1 F~.T y~ is an ordinary least squares step.
+    """
+    trajectory = [np.zeros(F.shape[1]) if start is None else start]
+    for _ in range(n_iterations):
+        w = trajectory[-1]
+        sigma = sigmoid(margins(F, y, w))
+        gamma = np.sqrt((1 - sigma) * sigma)
+        weighted = gamma[:, None] * F
+        answers = y * np.sqrt((1 - sigma) / sigma)
+        trajectory.append(w + step * ridge(weighted.T @ weighted,
+                                           weighted.T @ answers - tau * without_bias(w), tau))
+        if np.abs(sigmoid(margins(F, y, trajectory[-1])) - sigma).max() < tolerance:
+            break
+    return np.array(trajectory)
+
+
+def irls_glm(F, y, tau=1.0, step=1.0, n_iterations=50, tolerance=1e-10):
+    """The same loop in the general GLM notation of slide 19, with labels {0, 1}.
+
+    For the Bernoulli distribution c'(theta) = sigma(theta) is the mean, c''(theta) = sigma (1 - sigma)
+    the variance and phi = 1, so gamma_i = sqrt(c''(theta_i)) and y~_i = (y_i - c'(theta_i)) / gamma_i.
+
+    The variance has a floor: a saturated object gets gamma_i = 0 and turns y~_i into 0/0.
+    """
+    trajectory = [np.zeros(F.shape[1])]
+    for _ in range(n_iterations):
+        w = trajectory[-1]
+        mean = sigmoid(F @ w)
+        gamma = np.sqrt(np.maximum(mean * (1 - mean), 1e-30))
+        weighted = gamma[:, None] * F
+        answers = (y - mean) / gamma
+        trajectory.append(w + step * ridge(weighted.T @ weighted,
+                                           weighted.T @ answers - tau * without_bias(w), tau))
+        if np.abs(sigmoid(F @ trajectory[-1]) - mean).max() < tolerance:
+            break
+    return np.array(trajectory)
+
+
+def least_squares(F, y):
+    """Plain least squares, the zero approximation the lecture starts IRLS from."""
+    return np.linalg.lstsq(F, y, rcond=None)[0]
+
+
 def probability(F, w):
     """Posterior probability of the positive class: P(y = +1 | x) = sigma(<w, x>)."""
     return sigmoid(F @ w)
