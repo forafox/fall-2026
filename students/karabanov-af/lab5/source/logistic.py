@@ -64,11 +64,13 @@ def irls(F, y, tau=1.0, step=1.0, n_iterations=50, tolerance=1e-10, start=None):
 
     gamma_i = sqrt((1 - sigma_i) sigma_i) are the object weights, y~_i = y_i sqrt((1 - sigma_i) / sigma_i)
     the modified answers, and w += h (F~.T F~)^-1 F~.T y~ is an ordinary least squares step.
+
+    sigma_i is kept away from 0 and 1: a confident error gives sigma_i = 0 and turns y~_i into infinity.
     """
     trajectory = [np.zeros(F.shape[1]) if start is None else start]
     for _ in range(n_iterations):
         w = trajectory[-1]
-        sigma = sigmoid(margins(F, y, w))
+        sigma = np.clip(sigmoid(margins(F, y, w)), 1e-15, 1 - 1e-15)
         gamma = np.sqrt((1 - sigma) * sigma)
         weighted = gamma[:, None] * F
         answers = y * np.sqrt((1 - sigma) / sigma)
