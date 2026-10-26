@@ -65,12 +65,14 @@ def irls(F, y, tau=1.0, step=1.0, n_iterations=50, tolerance=1e-10, start=None):
     gamma_i = sqrt((1 - sigma_i) sigma_i) are the object weights, y~_i = y_i sqrt((1 - sigma_i) / sigma_i)
     the modified answers, and w += h (F~.T F~)^-1 F~.T y~ is an ordinary least squares step.
 
-    sigma_i is kept away from 0 and 1: a confident error gives sigma_i = 0 and turns y~_i into infinity.
+    The only denominator here is sigma_i, and it vanishes only on a confident error: sigma_i = 0 gives
+    gamma_i = 0 and y~_i = inf, so gamma_i * y~_i becomes 0 * inf. Hence the floor on sigma_i. A confident
+    right answer is harmless: sigma_i = 1 gives gamma_i = y~_i = 0 without any division.
     """
     trajectory = [np.zeros(F.shape[1]) if start is None else start]
     for _ in range(n_iterations):
         w = trajectory[-1]
-        sigma = np.clip(sigmoid(margins(F, y, w)), 1e-15, 1 - 1e-15)
+        sigma = np.maximum(sigmoid(margins(F, y, w)), 1e-15)
         gamma = np.sqrt((1 - sigma) * sigma)
         weighted = gamma[:, None] * F
         answers = y * np.sqrt((1 - sigma) / sigma)
@@ -87,7 +89,8 @@ def irls_glm(F, y, tau=1.0, step=1.0, n_iterations=50, tolerance=1e-10):
     For the Bernoulli distribution c'(theta) = sigma(theta) is the mean, c''(theta) = sigma (1 - sigma)
     the variance and phi = 1, so gamma_i = sqrt(c''(theta_i)) and y~_i = (y_i - c'(theta_i)) / gamma_i.
 
-    The variance has a floor: a saturated object gets gamma_i = 0 and turns y~_i into 0/0.
+    Here the denominator is gamma_i, and it vanishes on any saturation: a confident right answer gives 0/0,
+    a confident error gives +-1/0. Hence the floor on the variance.
     """
     trajectory = [np.zeros(F.shape[1])]
     for _ in range(n_iterations):
